@@ -16,8 +16,8 @@ remediation and reporting workflow closing the loop.
 | Report | Drift reporter | Summarize untagged and mis-tagged resources and deliver the report |
 
 This repository currently ships the preventive layer (the Organizations tag
-policy); the detective, remediation, and reporting layers are added as the
-platform grows.
+policy) and the detective layer (AWS Config required-tags rules); the
+remediation and reporting layers are added as the platform grows.
 
 ## Repository layout
 
@@ -27,7 +27,8 @@ platform grows.
 | `providers.tf` | AWS provider and organization-wide default tags |
 | `variables.tf` | Input variables, including the declarative tagging standard |
 | `tag-policies.tf` | Organizations tag policy document and attachments |
-| `outputs.tf` | Policy ID/ARN, rendered document, and attachment targets |
+| `config-rules.tf` | AWS Config required-tags rules with per-resource scoping and an optional recorder |
+| `outputs.tf` | Policy ID/ARN, rendered document, attachment targets, and Config rule names/ARNs |
 
 ## The tagging standard
 
@@ -75,6 +76,28 @@ terraform apply -var 'policy_target_ids=["r-abcd"]'
 Example values in this repository use placeholders only — organization root
 `r-abcd`, OU `ou-abcd-11111111`, and account ID `123456789012`. Replace them
 with your own before applying.
+
+## Detective layer — AWS Config
+
+`config-rules.tf` creates one AWS Config `REQUIRED_TAGS` rule per resource type,
+so each type is evaluated against its own required-key set. The mapping lives in
+the `config_rule_resource_scopes` variable, and the allowed values for each key
+are sourced from the same `required_tags` definition the tag policy uses:
+
+```hcl
+config_rule_resource_scopes = {
+  "AWS::EC2::Instance"   = ["Environment", "Owner", "CostCenter"]
+  "AWS::S3::Bucket"      = ["Environment", "Owner", "DataClassification"]
+  "AWS::DynamoDB::Table" = ["Environment", "Owner", "DataClassification"]
+}
+```
+
+Each rule is scoped to a single resource type via `compliance_resource_types`
+and packs up to six keys into the managed rule's input schema. The rules assume
+a configuration recorder is already active in the account (the common case when
+Config is enabled centrally); set `create_config_recorder = true` to provision a
+recorder, delivery channel, and hardened delivery bucket for a standalone
+account.
 
 ## Design principles
 

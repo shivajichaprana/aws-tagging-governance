@@ -93,3 +93,77 @@ variable "policy_target_ids" {
     error_message = "Each target must be an organization root (r-*), OU (ou-*), or 12-digit account ID."
   }
 }
+
+# Toggle for the detective AWS Config REQUIRED_TAGS rules. Leave enabled to
+# create one rule per in-scope resource type; disable to manage only the
+# preventive Organizations tag policy.
+variable "enable_config_rules" {
+  description = "Whether to create the AWS Config required-tags rules."
+  type        = bool
+  default     = true
+}
+
+# Per-resource scoping for the REQUIRED_TAGS rules: maps each AWS Config
+# resource type to the tag keys required on it. Keys must be declared in
+# required_tags (their allowed values are sourced from there). The REQUIRED_TAGS
+# managed rule supports at most six keys per resource type.
+variable "config_rule_resource_scopes" {
+  description = "Map of AWS Config resource type to the required tag keys enforced on it (1-6 keys, each declared in required_tags)."
+  type        = map(list(string))
+
+  default = {
+    "AWS::EC2::Instance"   = ["Environment", "Owner", "CostCenter"]
+    "AWS::EC2::Volume"     = ["Environment", "Owner"]
+    "AWS::S3::Bucket"      = ["Environment", "Owner", "DataClassification"]
+    "AWS::RDS::DBInstance" = ["Environment", "Owner", "CostCenter"]
+    "AWS::DynamoDB::Table" = ["Environment", "Owner", "DataClassification"]
+  }
+
+  validation {
+    condition = alltrue([
+      for rtype in keys(var.config_rule_resource_scopes) : can(regex("^AWS::[A-Za-z0-9]+::[A-Za-z0-9]+$", rtype))
+    ])
+    error_message = "Each key must be an AWS Config resource type such as AWS::EC2::Instance."
+  }
+
+  validation {
+    condition = alltrue([
+      for keys in values(var.config_rule_resource_scopes) : length(keys) >= 1 && length(keys) <= 6
+    ])
+    error_message = "Each resource type must list between 1 and 6 required tag keys (REQUIRED_TAGS supports at most six)."
+  }
+}
+
+# Optional: create an AWS Config configuration recorder in this account. Off by
+# default because Config is usually enabled centrally; enable for standalone
+# accounts that do not yet record configuration items.
+variable "create_config_recorder" {
+  description = "Whether to provision an AWS Config recorder, delivery channel, and delivery bucket in this account."
+  type        = bool
+  default     = false
+}
+
+# Optional explicit name for the Config delivery bucket. Defaults to a
+# deterministic, account-scoped name when null.
+variable "config_s3_bucket_name" {
+  description = "Name of the S3 bucket for Config delivery. Null derives a deterministic account-scoped name."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.config_s3_bucket_name == null || can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", coalesce(var.config_s3_bucket_name, "placeholder-bucket")))
+    error_message = "config_s3_bucket_name must be a valid S3 bucket name or null."
+  }
+}
+
+# Retention for delivered Config snapshots/history in the delivery bucket.
+variable "config_log_retention_days" {
+  description = "Days to retain Config delivery objects before expiration."
+  type        = number
+  default     = 365
+
+  validation {
+    condition     = var.config_log_retention_days >= 1 && var.config_log_retention_days <= 3650
+    error_message = "config_log_retention_days must be between 1 and 3650."
+  }
+}

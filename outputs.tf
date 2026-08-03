@@ -22,3 +22,23 @@ output "required_tag_keys" {
   description = "Tag keys standardized by this policy."
   value       = keys(var.required_tags)
 }
+
+output "config_rule_names" {
+  description = "Map of AWS Config resource type to the REQUIRED_TAGS rule name created for it."
+  value       = { for rtype, rule in aws_config_config_rule.required_tags : rtype => rule.name }
+}
+
+output "config_rule_arns" {
+  description = "Map of AWS Config resource type to the ARN of the REQUIRED_TAGS rule created for it."
+  value       = { for rtype, rule in aws_config_config_rule.required_tags : rtype => rule.arn }
+}
+
+output "config_recorder_name" {
+  description = "Name of the AWS Config recorder, when this configuration manages one."
+  value       = one(aws_config_configuration_recorder.this[*].name)
+}
+
+output "config_delivery_bucket" {
+  description = "Name of the Config delivery bucket, when this configuration manages the recorder."
+  value       = one(aws_s3_bucket.config[*].id)
+}
