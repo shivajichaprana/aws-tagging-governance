@@ -1,0 +1,37 @@
+schemaVersion: '0.3'
+description: >-
+  Remediate a resource that is missing required tags by invoking the tag
+  remediation function, which fills in the organization's default tag values.
+  Designed to be called by an AWS Config remediation configuration or run
+  on demand from Systems Manager Automation.
+assumeRole: '{{ AutomationAssumeRole }}'
+parameters:
+  ResourceId:
+    type: String
+    description: >-
+      Identifier of the resource to remediate (an ARN, or a bare resource id
+      when ResourceType is supplied). Config remediation passes RESOURCE_ID.
+  ResourceType:
+    type: String
+    description: AWS Config resource type, for example AWS::S3::Bucket.
+    default: ''
+  AutomationAssumeRole:
+    type: AWS::IAM::Role::Arn
+    description: Role that Systems Manager Automation assumes to run this runbook.
+  RemediationFunctionName:
+    type: String
+    description: Name of the tag remediation function to invoke.
+mainSteps:
+  - name: InvokeTagRemediation
+    action: aws:invokeLambdaFunction
+    timeoutSeconds: 120
+    onFailure: Abort
+    isEnd: true
+    inputs:
+      FunctionName: '{{ RemediationFunctionName }}'
+      InvocationType: RequestResponse
+      Payload: '{"resource_id": "{{ ResourceId }}", "resource_type": "{{ ResourceType }}"}'
+    outputs:
+      - Name: RemediationResult
+        Selector: $.Payload
+        Type: String

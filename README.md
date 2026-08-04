@@ -15,9 +15,11 @@ remediation and reporting workflow closing the loop.
 | Remediate | Tag remediation automation | Apply default tags to non-compliant resources and notify owners |
 | Report | Drift reporter | Summarize untagged and mis-tagged resources and deliver the report |
 
-This repository currently ships the preventive layer (the Organizations tag
-policy) and the detective layer (AWS Config required-tags rules); the
-remediation and reporting layers are added as the platform grows.
+This repository ships the preventive layer (the Organizations tag policy),
+the detective layer (AWS Config required-tags rules), and the remediation
+layer (an automation that applies default tags to non-compliant resources
+and notifies on the actions taken); the reporting layer is added as the
+platform grows.
 
 ## Repository layout
 
@@ -28,6 +30,9 @@ remediation and reporting layers are added as the platform grows.
 | `variables.tf` | Input variables, including the declarative tagging standard |
 | `tag-policies.tf` | Organizations tag policy document and attachments |
 | `config-rules.tf` | AWS Config required-tags rules with per-resource scoping and an optional recorder |
+| `remediation.tf` | Remediation function, notification topic, SSM Automation document, and Config remediation wiring |
+| `lambda/tag-remediator/` | Function that applies default tags to non-compliant resources |
+| `ssm/tag-remediation.yaml` | SSM Automation document that invokes the remediation function |
 | `outputs.tf` | Policy ID/ARN, rendered document, attachment targets, and Config rule names/ARNs |
 
 ## The tagging standard
@@ -98,6 +103,39 @@ a configuration recorder is already active in the account (the common case when
 Config is enabled centrally); set `create_config_recorder = true` to provision a
 recorder, delivery channel, and hardened delivery bucket for a standalone
 account.
+
+## Remediation layer
+
+`remediation.tf` provisions an automated workflow that fills in the
+organization's default tag values on resources the detective layer flags as
+non-compliant, and publishes a summary of the actions taken.
+
+The remediation is deliberately conservative:
+
+- It sets only the *missing* required tag keys that have a safe default in
+  `default_tag_values`. A key whose value cannot be safely guessed (for example
+  `Environment`) is intentionally omitted so the workflow never writes a value
+  that would itself be non-compliant.
+- It never overwrites an existing tag value.
+- It skips any resource carrying one of the `remediation_exclusion_tag_keys`,
+  giving owners a documented opt-out.
+- `remediation_dry_run` runs the whole flow in report-only mode.
+
+Actuation is opt-in. The function, notification topic, and SSM Automation
+document are created by default, but the two triggers stay off until you choose
+to enable them:
+
+```hcl
+# Invoke the function the moment AWS Config reports a resource non-compliant.
+enable_event_driven_remediation = true
+
+# Wire each required-tags rule to the SSM document as a Config remediation.
+enable_config_remediation    = true
+config_remediation_automatic = true
+```
+
+Until then, the SSM Automation document can be run on demand against a single
+resource, making it easy to validate the behavior before enabling it fleet-wide.
 
 ## Design principles
 

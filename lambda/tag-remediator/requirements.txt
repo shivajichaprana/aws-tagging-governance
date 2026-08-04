@@ -1,0 +1,4 @@
+# The handler depends only on the Python standard library and boto3, which is
+# provided by the Lambda Python runtime. This file is intentionally empty of
+# third-party pins so the deployment package stays minimal; add packages here
+# only if the handler grows a dependency the runtime does not ship.

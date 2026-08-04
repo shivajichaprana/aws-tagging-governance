@@ -42,3 +42,38 @@ output "config_delivery_bucket" {
   description = "Name of the Config delivery bucket, when this configuration manages the recorder."
   value       = one(aws_s3_bucket.config[*].id)
 }
+
+output "tag_remediator_function_name" {
+  description = "Name of the tag remediation function, when the remediation layer is enabled."
+  value       = one(aws_lambda_function.tag_remediator[*].function_name)
+}
+
+output "tag_remediator_function_arn" {
+  description = "ARN of the tag remediation function, when the remediation layer is enabled."
+  value       = one(aws_lambda_function.tag_remediator[*].arn)
+}
+
+output "remediation_topic_arn" {
+  description = "ARN of the remediation notification topic, when the remediation layer is enabled."
+  value       = one(aws_sns_topic.remediation[*].arn)
+}
+
+output "remediation_kms_key_arn" {
+  description = "ARN of the KMS key encrypting the remediation log group and topic."
+  value       = one(aws_kms_key.remediation[*].arn)
+}
+
+output "ssm_remediation_document_name" {
+  description = "Name of the SSM Automation document that invokes tag remediation."
+  value       = one(aws_ssm_document.tag_remediation[*].name)
+}
+
+output "ssm_automation_role_arn" {
+  description = "ARN of the role Systems Manager Automation assumes to run the remediation runbook."
+  value       = one(aws_iam_role.ssm_automation[*].arn)
+}
+
+output "config_remediation_rule_names" {
+  description = "Config rules wired to the remediation document, when Config remediation is enabled."
+  value       = [for r in aws_config_remediation_configuration.tag_remediation : r.config_rule_name]
+}
