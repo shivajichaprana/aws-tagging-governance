@@ -15,11 +15,11 @@ remediation and reporting workflow closing the loop.
 | Remediate | Tag remediation automation | Apply default tags to non-compliant resources and notify owners |
 | Report | Drift reporter | Summarize untagged and mis-tagged resources and deliver the report |
 
-This repository ships the preventive layer (the Organizations tag policy),
-the detective layer (AWS Config required-tags rules), and the remediation
-layer (an automation that applies default tags to non-compliant resources
-and notifies on the actions taken); the reporting layer is added as the
-platform grows.
+This repository ships all four layers: the preventive Organizations tag
+policy, the detective AWS Config required-tags rules, the remediation
+automation that applies default tags to non-compliant resources, and the
+reporting layer that periodically inventories tag drift and delivers the
+findings.
 
 ## Repository layout
 
@@ -31,7 +31,9 @@ platform grows.
 | `tag-policies.tf` | Organizations tag policy document and attachments |
 | `config-rules.tf` | AWS Config required-tags rules with per-resource scoping and an optional recorder |
 | `remediation.tf` | Remediation function, notification topic, SSM Automation document, and Config remediation wiring |
+| `reporting.tf` | Drift reporter function, report bucket, notification topic, and schedule |
 | `lambda/tag-remediator/` | Function that applies default tags to non-compliant resources |
+| `lambda/tag-drift-reporter/` | Read-only function that reports resources missing required tags |
 | `ssm/tag-remediation.yaml` | SSM Automation document that invokes the remediation function |
 | `outputs.tf` | Policy ID/ARN, rendered document, attachment targets, and Config rule names/ARNs |
 
@@ -137,14 +139,47 @@ config_remediation_automatic = true
 Until then, the SSM Automation document can be run on demand against a single
 resource, making it easy to validate the behavior before enabling it fleet-wide.
 
+## Reporting layer
+
+`reporting.tf` provisions a scheduled, read-only inventory of tag drift. Where
+the detective rules evaluate resources one at a time, the reporter produces the
+single periodic answer to "what is currently untagged?" that owners act on.
+
+On each run the function enumerates resources through the Resource Groups
+Tagging API, compares each against the required-key set for its type, and:
+
+- writes a date-partitioned JSON report to an encrypted S3 bucket (suitable for
+  audit evidence or downstream analytics);
+- publishes a text summary to a dedicated SNS topic, worst offenders first.
+
+Scoping mirrors the detective layer via `drift_resource_type_scopes`, which maps
+each Resource Groups Tagging API resource-type filter to the keys required on
+it:
+
+```hcl
+drift_resource_type_scopes = {
+  "ec2:instance"   = ["Environment", "Owner", "CostCenter"]
+  "s3:bucket"      = ["Environment", "Owner", "DataClassification"]
+  "dynamodb:table" = ["Environment", "Owner", "DataClassification"]
+}
+```
+
+The scan writes nothing back to any resource and honours the same opt-out tag
+keys as the remediation layer. It is self-contained — its own key, bucket, and
+topic — so it can be enabled independently, and runs on the schedule set by
+`drift_report_schedule_expression` (weekly by default).
+
 ## Design principles
 
 - **Standard as data.** The tagging standard is a single declarative variable,
   not hand-written policy JSON, so it is easy to review and extend.
 - **Review before enforce.** With no attachment targets the policy is created
   but inert, letting you inspect the rendered document before it takes effect.
-- **Layered controls.** Prevention (tag policy), detection (Config), and
-  remediation are separate, composable layers rather than a single mechanism.
+- **Layered controls.** Prevention (tag policy), detection (Config),
+  remediation, and reporting are separate, composable layers rather than a
+  single mechanism.
+- **Report, never mutate.** The drift reporter only reads and summarizes;
+  changing a resource's tags is the remediation layer's job alone.
 
 ## License
 

@@ -320,3 +320,110 @@ variable "lambda_log_retention_days" {
     error_message = "lambda_log_retention_days must be a value CloudWatch Logs accepts."
   }
 }
+
+# ---------------------------------------------------------------------------
+# Reporting layer
+# ---------------------------------------------------------------------------
+
+# Master toggle for the periodic tag-drift reporting workflow (scan function,
+# report bucket, notification topic, and schedule). Enabled by default so the
+# capability is provisioned; it is self-contained and can be toggled
+# independently of the remediation layer.
+variable "enable_drift_reporting" {
+  description = "Whether to create the tag drift reporter, its report bucket, topic, and schedule."
+  type        = bool
+  default     = true
+}
+
+# Per-resource-type scoping for the drift scan: maps a Resource Groups Tagging
+# API resource-type filter (for example "ec2:instance", "s3", or "rds:db") to
+# the tag keys required on that type. Different types can require different
+# keys, mirroring the detective Config rules.
+variable "drift_resource_type_scopes" {
+  description = "Map of Resource Groups Tagging API resource-type filter to the required tag keys reported as drift when missing."
+  type        = map(list(string))
+
+  default = {
+    "ec2:instance"   = ["Environment", "Owner", "CostCenter"]
+    "ec2:volume"     = ["Environment", "Owner"]
+    "s3:bucket"      = ["Environment", "Owner", "DataClassification"]
+    "rds:db"         = ["Environment", "Owner", "CostCenter"]
+    "dynamodb:table" = ["Environment", "Owner", "DataClassification"]
+  }
+
+  validation {
+    condition     = length(var.drift_resource_type_scopes) > 0
+    error_message = "drift_resource_type_scopes must list at least one resource type to scan."
+  }
+
+  validation {
+    condition = alltrue([
+      for keys in values(var.drift_resource_type_scopes) : length(keys) >= 1
+    ])
+    error_message = "Each resource type must list at least one required tag key."
+  }
+}
+
+# Optional explicit name for the drift report bucket. Defaults to a
+# deterministic, account-scoped name when null.
+variable "drift_report_bucket_name" {
+  description = "Name of the S3 bucket for drift reports. Null derives a deterministic account-scoped name."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.drift_report_bucket_name == null || can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", coalesce(var.drift_report_bucket_name, "placeholder-bucket")))
+    error_message = "drift_report_bucket_name must be a valid S3 bucket name or null."
+  }
+}
+
+# Retention for stored drift reports before expiration.
+variable "drift_report_retention_days" {
+  description = "Days to retain drift report objects before expiration."
+  type        = number
+  default     = 365
+
+  validation {
+    condition     = var.drift_report_retention_days >= 1 && var.drift_report_retention_days <= 3650
+    error_message = "drift_report_retention_days must be between 1 and 3650."
+  }
+}
+
+# Schedule for the drift scan. Defaults to a weekly Monday-morning run.
+variable "drift_report_schedule_expression" {
+  description = "EventBridge schedule expression controlling how often the drift report runs."
+  type        = string
+  default     = "cron(0 7 ? * MON *)"
+
+  validation {
+    condition     = can(regex("^(rate\\(.+\\)|cron\\(.+\\))$", var.drift_report_schedule_expression))
+    error_message = "drift_report_schedule_expression must be a rate(...) or cron(...) expression."
+  }
+}
+
+# Optional email addresses subscribed to the drift notification topic.
+variable "drift_report_email_addresses" {
+  description = "Email addresses subscribed to the drift notification topic."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for e in var.drift_report_email_addresses : can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", e))
+    ])
+    error_message = "Each entry must be a valid email address."
+  }
+}
+
+# Maximum number of drifted resources enumerated inline in the SNS summary; the
+# full detail always lives in the S3 report.
+variable "drift_summary_limit" {
+  description = "Maximum drifted resources listed inline in the drift notification."
+  type        = number
+  default     = 50
+
+  validation {
+    condition     = var.drift_summary_limit >= 1 && var.drift_summary_limit <= 500
+    error_message = "drift_summary_limit must be between 1 and 500."
+  }
+}

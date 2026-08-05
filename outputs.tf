@@ -77,3 +77,33 @@ output "config_remediation_rule_names" {
   description = "Config rules wired to the remediation document, when Config remediation is enabled."
   value       = [for r in aws_config_remediation_configuration.tag_remediation : r.config_rule_name]
 }
+
+output "tag_drift_reporter_function_name" {
+  description = "Name of the tag drift reporter function, when the reporting layer is enabled."
+  value       = one(aws_lambda_function.tag_drift_reporter[*].function_name)
+}
+
+output "tag_drift_reporter_function_arn" {
+  description = "ARN of the tag drift reporter function, when the reporting layer is enabled."
+  value       = one(aws_lambda_function.tag_drift_reporter[*].arn)
+}
+
+output "drift_report_bucket" {
+  description = "Name of the drift report S3 bucket, when the reporting layer is enabled."
+  value       = one(aws_s3_bucket.drift_reports[*].id)
+}
+
+output "drift_topic_arn" {
+  description = "ARN of the drift notification topic, when the reporting layer is enabled."
+  value       = one(aws_sns_topic.drift[*].arn)
+}
+
+output "drift_kms_key_arn" {
+  description = "ARN of the KMS key encrypting the drift report bucket, log group, and topic."
+  value       = one(aws_kms_key.drift[*].arn)
+}
+
+output "drift_report_schedule_rule" {
+  description = "Name of the EventBridge rule that schedules the drift report."
+  value       = one(aws_cloudwatch_event_rule.drift_schedule[*].name)
+}

@@ -1,0 +1,4 @@
+# The AWS Lambda Python runtime provides boto3; it is listed here only so the
+# function's single dependency is discoverable and can be installed for local
+# testing. No third-party packages are bundled.
+boto3
